@@ -1,6 +1,8 @@
 import { init as baseInit } from './index.js';
 
 const EXTENSION_KEY = 'xiuxianD20Installer';
+const BASE_VERSION = '1.0.3';
+const WRAPPER_VERSION = '1.1.0';
 const PRESET_SUFFIX = ' + 修仙D20';
 const CORE_ID = 'xiuxian_d20_core';
 const GUARD_ID = 'xiuxian_d20_guard';
@@ -31,15 +33,19 @@ async function loadPromptTexts() {
     return { core: await coreRes.text(), guard: await guardRes.text() };
 }
 
+async function waitForPresetManager(timeoutMs = 10000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+        const context = getContext();
+        const manager = context.getPresetManager?.('openai') ?? context.getPresetManager?.();
+        if (manager?.getSelectedPresetName && manager?.getPresetSettings && manager?.savePreset) return manager;
+        await new Promise(resolve => setTimeout(resolve, 150));
+    }
+    return null;
+}
+
 function upsertPrompt(prompts, identifier, name, content) {
-    const item = {
-        identifier,
-        name,
-        system_prompt: false,
-        marker: false,
-        role: 'system',
-        content,
-    };
+    const item = { identifier, name, system_prompt: false, marker: false, role: 'system', content };
     const index = prompts.findIndex(x => x?.identifier === identifier);
     if (index >= 0) prompts[index] = { ...prompts[index], ...item };
     else prompts.push(item);
@@ -48,7 +54,6 @@ function upsertPrompt(prompts, identifier, name, content) {
 function placeManagedPrompts(order) {
     if (!Array.isArray(order)) return;
     const cleaned = order.filter(x => ![CORE_ID, GUARD_ID].includes(x?.identifier));
-
     const coreEntry = { identifier: CORE_ID, enabled: true };
     const guardEntry = { identifier: GUARD_ID, enabled: true };
 
@@ -59,7 +64,6 @@ function placeManagedPrompts(order) {
     let guardIndex = cleaned.findIndex(x => x?.identifier === 'jailbreak');
     if (guardIndex < 0) guardIndex = cleaned.length;
     cleaned.splice(guardIndex, 0, guardEntry);
-
     order.splice(0, order.length, ...cleaned);
 }
 
@@ -77,7 +81,7 @@ async function clearRuntimePromptInjection() {
 
 async function buildPresetCopy({ silent = false } = {}) {
     const context = getContext();
-    const manager = context.getPresetManager?.('openai') ?? context.getPresetManager?.();
+    const manager = await waitForPresetManager();
     if (!manager) throw new Error('当前没有可用的 Chat Completion 预设管理器。请先选择小猫预设后再试。');
 
     const selectedName = manager.getSelectedPresetName?.();
@@ -90,11 +94,8 @@ async function buildPresetCopy({ silent = false } = {}) {
 
     const existingValue = manager.findPreset?.(targetName);
     let data;
-    if (existingValue !== undefined && existingValue !== null) {
-        data = clone(manager.getPresetSettings(targetName));
-    } else {
-        data = clone(manager.getPresetSettings(selectedName));
-    }
+    if (existingValue !== undefined && existingValue !== null) data = clone(manager.getPresetSettings(targetName));
+    else data = clone(manager.getPresetSettings(selectedName));
 
     if (!data || typeof data !== 'object') throw new Error('无法读取当前预设内容。');
     if (!Array.isArray(data.prompts)) data.prompts = [];
@@ -104,9 +105,7 @@ async function buildPresetCopy({ silent = false } = {}) {
     upsertPrompt(data.prompts, CORE_ID, '修仙D20·核心裁判系统', core);
     upsertPrompt(data.prompts, GUARD_ID, '修仙D20·每轮强制检查', guard);
 
-    if (data.prompt_order.length === 0) {
-        data.prompt_order.push({ character_id: 100000, order: [] });
-    }
+    if (data.prompt_order.length === 0) data.prompt_order.push({ character_id: 100000, order: [] });
     for (const group of data.prompt_order) {
         if (!Array.isArray(group.order)) group.order = [];
         placeManagedPrompts(group.order);
@@ -114,15 +113,14 @@ async function buildPresetCopy({ silent = false } = {}) {
 
     await manager.savePreset(targetName, data);
     const targetValue = manager.findPreset?.(targetName);
-    if (targetValue !== undefined && targetValue !== null) {
-        await manager.selectPreset(targetValue);
-    }
+    if (targetValue !== undefined && targetValue !== null && manager.selectPreset) await manager.selectPreset(targetValue);
 
     const { extensionSettings, saveSettingsDebounced } = context;
     extensionSettings[EXTENSION_KEY] ??= {};
     extensionSettings[EXTENSION_KEY].presetMode = true;
     extensionSettings[EXTENSION_KEY].presetName = targetName;
     extensionSettings[EXTENSION_KEY].presetSourceName = sourceName;
+    extensionSettings[EXTENSION_KEY].installedVersion = WRAPPER_VERSION;
     saveSettingsDebounced?.();
 
     await clearRuntimePromptInjection();
@@ -167,6 +165,18 @@ function addPresetModePanel() {
     } catch {}
 }
 
+function protectPresetModeButtons() {
+    for (const id of ['#xiuxian-d20-installer-repair', '#xiuxian-d20-installer-check']) {
+        const button = document.querySelector(id);
+        button?.addEventListener('click', () => {
+            setTimeout(async () => {
+                const state = getContext().extensionSettings?.[EXTENSION_KEY];
+                if (state?.presetMode) await clearRuntimePromptInjection();
+            }, 300);
+        });
+    }
+}
+
 async function maybeAutoBuildPreset() {
     const context = getContext();
     const { extensionSettings, saveSettingsDebounced } = context;
@@ -175,6 +185,8 @@ async function maybeAutoBuildPreset() {
 
     if (state.presetAutoHandledV110) {
         if (state.presetMode) await clearRuntimePromptInjection();
+        state.installedVersion = WRAPPER_VERSION;
+        saveSettingsDebounced?.();
         return;
     }
 
@@ -183,12 +195,14 @@ async function maybeAutoBuildPreset() {
         state.presetAutoHandledV110 = true;
         state.presetMode = true;
         state.presetName = name;
+        state.installedVersion = WRAPPER_VERSION;
         saveSettingsDebounced?.();
         notify('success', `v1.1.0 已自动创建并切换到：${name}。原预设保持不变。`);
     } catch (error) {
         state.presetAutoHandledV110 = true;
         state.presetMode = false;
         state.presetAutoError = String(error?.message ?? error);
+        state.installedVersion = WRAPPER_VERSION;
         saveSettingsDebounced?.();
         console.warn('[修仙D20] 自动生成 D20 预设失败，将继续使用运行时规则注入。', error);
         notify('warning', `未能自动生成 D20 预设：${error.message}。当前仍使用运行时规则注入，可稍后在扩展面板手动生成。`);
@@ -196,7 +210,17 @@ async function maybeAutoBuildPreset() {
 }
 
 export async function init() {
+    const context = getContext();
+    context.extensionSettings[EXTENSION_KEY] ??= {};
+    // 兼容旧核心安装器：在调用 1.0.3 核心前临时对齐其内部版本，避免每次刷新都强制重装。
+    context.extensionSettings[EXTENSION_KEY].installedVersion = BASE_VERSION;
+    context.saveSettingsDebounced?.();
+
     await baseInit();
     addPresetModePanel();
+    protectPresetModeButtons();
     await maybeAutoBuildPreset();
+
+    context.extensionSettings[EXTENSION_KEY].installedVersion = WRAPPER_VERSION;
+    context.saveSettingsDebounced?.();
 }
