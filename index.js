@@ -1,5 +1,5 @@
 const EXTENSION_KEY = 'xiuxianD20Installer';
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 const SET_NAME = '修仙D20';
 const MANAGED_REGEX_NAMES = [
     'D20_提取ACTION',
