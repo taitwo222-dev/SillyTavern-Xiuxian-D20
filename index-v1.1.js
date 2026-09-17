@@ -2,7 +2,7 @@ import { init as baseInit } from './index.js';
 
 const EXTENSION_KEY = 'xiuxianD20Installer';
 const BASE_VERSION = '1.0.3';
-const WRAPPER_VERSION = '1.1.1';
+const WRAPPER_VERSION = '1.1.2';
 
 function getContext() {
     if (!globalThis.SillyTavern?.getContext) throw new Error('SillyTavern.getContext() 不可用。');
