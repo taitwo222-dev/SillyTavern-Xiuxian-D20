@@ -2,8 +2,9 @@ import { init as baseInit } from './index.js';
 
 const EXTENSION_KEY = 'xiuxianD20Installer';
 const BASE_VERSION = '1.0.3';
-const WRAPPER_VERSION = '1.1.3';
+const WRAPPER_VERSION = '1.1.4';
 const OUTPUT_GUARD_SENTINEL = '__xiuxianD20PendingOutputGuardV113';
+const VERSION_GUARD_SENTINEL = '__xiuxianD20VersionGuardV114';
 
 function getContext() {
     if (!globalThis.SillyTavern?.getContext) throw new Error('SillyTavern.getContext() 不可用。');
@@ -113,6 +114,51 @@ function installPendingOutputGuard() {
     globalThis[OUTPUT_GUARD_SENTINEL] = true;
 }
 
+function syncWrapperVersion() {
+    const context = getContext();
+    context.extensionSettings[EXTENSION_KEY] ??= {};
+    const state = context.extensionSettings[EXTENSION_KEY];
+
+    if (state.installedVersion !== WRAPPER_VERSION) {
+        state.installedVersion = WRAPPER_VERSION;
+        context.saveSettingsDebounced?.();
+    }
+
+    const node = document.querySelector('#xiuxian-d20-installer-status');
+    if (node && typeof node.textContent === 'string') {
+        const oldLabel = `版本 ${BASE_VERSION}`;
+        const newLabel = `版本 ${WRAPPER_VERSION}`;
+        if (node.textContent.includes(oldLabel)) {
+            node.textContent = node.textContent.replace(oldLabel, newLabel);
+        }
+    }
+}
+
+function installVersionGuard() {
+    if (globalThis[VERSION_GUARD_SENTINEL]) return;
+
+    const node = document.querySelector('#xiuxian-d20-installer-status');
+    let observer = null;
+
+    if (node) {
+        observer = new MutationObserver(() => {
+            queueMicrotask(() => syncWrapperVersion());
+        });
+        observer.observe(node, { childList: true, characterData: true, subtree: true });
+    }
+
+    // 核心 1.0.3 安装器在“重新安装/修复”完成时会把 installedVersion 回写成 1.0.3。
+    // 这里仅纠正本扩展自己的版本状态，不修改任何用户预设、Regex 或 QR 内容。
+    for (const id of ['#xiuxian-d20-installer-repair', '#xiuxian-d20-installer-check']) {
+        document.querySelector(id)?.addEventListener('click', () => {
+            setTimeout(() => syncWrapperVersion(), 0);
+        });
+    }
+
+    globalThis[VERSION_GUARD_SENTINEL] = { observer };
+    syncWrapperVersion();
+}
+
 export async function init() {
     const context = getContext();
     context.extensionSettings[EXTENSION_KEY] ??= {};
@@ -139,9 +185,11 @@ export async function init() {
     delete state.presetAutoError;
 
     installPendingOutputGuard();
+    installVersionGuard();
 
     // 更新/刷新扩展后，顺手清理当前最后一条尚未处理的 D20 请求消息。
     await sanitizeLatestAssistantMessage({ rerender: true });
 
+    syncWrapperVersion();
     context.saveSettingsDebounced?.();
 }
