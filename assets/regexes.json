@@ -1,0 +1,62 @@
+[
+  {
+    "id": "825b6f60-8d66-46a6-9091-7095ef44d59e",
+    "scriptName": "D20_提取ACTION",
+    "findRegex": "[\\s\\S]*?ACTION\\s*=\\s*([^\\r\\n]+)[\\s\\S]*",
+    "replaceString": "$1",
+    "trimStrings": [],
+    "placement": [3],
+    "disabled": false,
+    "markdownOnly": false,
+    "promptOnly": false,
+    "runOnEdit": false,
+    "substituteRegex": 0,
+    "minDepth": null,
+    "maxDepth": null
+  },
+  {
+    "id": "981b85f4-ecf7-4396-a196-e20d7530e586",
+    "scriptName": "D20_提取DC",
+    "findRegex": "[\\s\\S]*?DC=([+-]?\\d+)[\\s\\S]*",
+    "replaceString": "$1",
+    "trimStrings": [],
+    "placement": [3],
+    "disabled": false,
+    "markdownOnly": false,
+    "promptOnly": false,
+    "runOnEdit": false,
+    "substituteRegex": 0,
+    "minDepth": null,
+    "maxDepth": null
+  },
+  {
+    "id": "722f0f02-4dd2-42d4-9022-3d1040bd18ef",
+    "scriptName": "D20_提取MOD",
+    "findRegex": "[\\s\\S]*?MOD\\s*=\\s*([+-]?\\d+)[\\s\\S]*",
+    "replaceString": "$1",
+    "trimStrings": [],
+    "placement": [3],
+    "disabled": false,
+    "markdownOnly": false,
+    "promptOnly": false,
+    "runOnEdit": false,
+    "substituteRegex": 0,
+    "minDepth": null,
+    "maxDepth": null
+  },
+  {
+    "id": "70ef8570-7da7-433d-a4a1-fca0a2b7e1da",
+    "scriptName": "D20_提取DETAIL",
+    "findRegex": "[\\s\\S]*?DETAIL\\s*=\\s*([^\\r\\n]+)[\\s\\S]*",
+    "replaceString": "$1",
+    "trimStrings": [],
+    "placement": [3],
+    "disabled": false,
+    "markdownOnly": false,
+    "promptOnly": false,
+    "runOnEdit": false,
+    "substituteRegex": 0,
+    "minDepth": null,
+    "maxDepth": null
+  }
+]
