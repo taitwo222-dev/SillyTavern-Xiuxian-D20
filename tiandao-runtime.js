@@ -1,6 +1,6 @@
 const MAX_TIANDAO = 5;
 const AWARD_TYPES = new Set(['BREAKTHROUGH', 'SECRET_REALM', 'NEW_FEMALE_CULTIVATOR']);
-const AWARD_BLOCK_RE = /(?:<!--\s*)?\[D20_TIANDAO_AWARD\]([\s\S]*?)\[\/D20_TIANDAO_AWARD\](?:\s*-->)?/gi;
+const AWARD_BLOCK_RE = /<!--\s*\[D20_TIANDAO_AWARD\]([\s\S]*?)\[\/D20_TIANDAO_AWARD\]\s*-->/gi;
 const RUNTIME_SENTINEL = '__xiuxianD20TiandaoAwardRuntimeV116';
 const COMMAND_SENTINEL = '__xiuxianD20TiandaoCommandsV116';
 
@@ -10,6 +10,10 @@ function normalizeText(value) {
 
 function normalizeKey(value) {
     return normalizeText(value).toLocaleLowerCase();
+}
+
+function escapeToast(value) {
+    return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function clampTiandao(value) {
@@ -104,12 +108,13 @@ export async function processTiandaoAwardsByMessageId(getContext, messageId, {
     let current = clampTiandao(metadata.variables.d20_tiandao);
     let changed = false;
     let granted = 0;
+    let recordedAtCap = 0;
     const labels = [];
 
     if (!stillPending) {
         for (const award of awards) {
             if (!award.ok) {
-                notify('warning', `天道奖励标记无效：${award.error}`);
+                notify('warning', `天道奖励标记无效：${escapeToast(award.error)}`);
                 continue;
             }
             if (Object.hasOwn(ledger, award.id)) continue;
@@ -128,7 +133,9 @@ export async function processTiandaoAwardsByMessageId(getContext, messageId, {
             changed = true;
             if (gained) {
                 granted += 1;
-                labels.push(award.label);
+                labels.push(escapeToast(award.label));
+            } else {
+                recordedAtCap += 1;
             }
         }
     }
@@ -158,8 +165,9 @@ export async function processTiandaoAwardsByMessageId(getContext, messageId, {
 
     if (granted > 0) {
         notify('success', `☯ 天道点 +${granted}：${labels.join('、')}。当前 ${current}/${MAX_TIANDAO}`);
-    } else if (!stillPending && awards.some(award => award.ok && ledger[award.id]?.status === 'cap_reached')) {
-        notify('info', `☯ 天道点已达上限 ${MAX_TIANDAO}/${MAX_TIANDAO}；本次里程碑已记录，不重复奖励。`);
+    }
+    if (recordedAtCap > 0) {
+        notify('info', `☯ 天道点已达上限 ${MAX_TIANDAO}/${MAX_TIANDAO}；${recordedAtCap} 个新里程碑已记录，不重复奖励。`);
     }
 
     return changed;
@@ -189,7 +197,7 @@ export function resetTiandaoAwards(getContext) {
     return 'true';
 }
 
-export function registerTiandaoCommands(getContext, notify = defaultNotify) {
+export function registerTiandaoCommands(getContext) {
     if (globalThis[COMMAND_SENTINEL]) return;
     const { SlashCommandParser, SlashCommand } = getContext();
     if (!SlashCommandParser?.addCommandObject || !SlashCommand?.fromProps) {
@@ -199,10 +207,9 @@ export function registerTiandaoCommands(getContext, notify = defaultNotify) {
         name: 'xiuxian-d20-tiandao-reset',
         callback: () => resetTiandaoAwards(getContext),
         returns: 'true when Tiandao points and automatic award ledger are reset',
-        helpString: '重置天道点与自动奖励去重记录。通常仅由 D20 初始化使用。',
+        helpString: '重置天道点与自动奖励去重记录。用于完整重置同一聊天。',
     }));
     globalThis[COMMAND_SENTINEL] = true;
-    notify('info', '天道点自动奖励机制已加载。');
 }
 
 export function installTiandaoAwardRuntime(getContext, notify = defaultNotify) {
