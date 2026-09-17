@@ -1,5 +1,7 @@
+import { VERSION } from './version.js';
+import { registerRequestCommands } from './request-runtime.js';
+
 const EXTENSION_KEY = 'xiuxianD20Installer';
-const VERSION = '1.0.3';
 const SET_NAME = '修仙D20';
 const MANAGED_REGEX_NAMES = [
     'D20_提取ACTION',
@@ -214,6 +216,26 @@ async function syncQuickReplies(payload, forceUpdate, enableSystem = false) {
 
     await set.save();
 
+    // The original export was named "修仙D20 " (trailing space). Keep its
+    // custom buttons, but migrate D20-owned buttons and retire its duplicate
+    // automatic handler so it cannot bypass request validation.
+    const legacyNames = api.listSets?.() ?? [...(api.listGlobalSets?.() ?? []), ...(api.listChatSets?.() ?? [])];
+    for (const name of new Set(legacyNames)) {
+        if (name === SET_NAME || name.trim() !== SET_NAME) continue;
+        const legacy = api.getSetByName(name);
+        if (!legacy) continue;
+        let changed = false;
+        for (const source of payload.qrList) {
+            for (const qr of legacy.qrList.filter(item => item.label === source.label)) {
+                const desired = { ...source, executeOnAi: false };
+                if (qr.message === desired.message && qr.executeOnAi === false) continue;
+                copyManagedQrFields(qr, desired);
+                changed = true;
+            }
+        }
+        if (changed) await legacy.save();
+    }
+
     const globalSets = api.listGlobalSets?.() ?? [];
     if (!globalSets.includes(SET_NAME)) {
         api.addGlobalSet(SET_NAME, true);
@@ -391,6 +413,7 @@ function createSettingsPanel() {
 export async function init() {
     try {
         getContext();
+        registerRequestCommands(getContext, notify);
         createSettingsPanel();
 
         const { extensionSettings } = getContext();

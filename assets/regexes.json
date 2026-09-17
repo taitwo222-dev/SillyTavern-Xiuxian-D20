@@ -2,10 +2,12 @@
   {
     "id": "825b6f60-8d66-46a6-9091-7095ef44d59e",
     "scriptName": "D20_提取ACTION",
-    "findRegex": "[\\s\\S]*?ACTION\\s*=\\s*([^\\r\\n]+)[\\s\\S]*",
+    "findRegex": "/^[\\s\\S]*\\[D20_REQUEST\\][ \\t]*\\r?\\n(?:(?!\\[/?D20_REQUEST\\])[\\s\\S])*?^[ \\t]*ACTION[ \\t]*=[ \\t]*([^\\r\\n]+)(?:(?!\\[/?D20_REQUEST\\])[\\s\\S])*?\\[/D20_REQUEST\\][\\s\\S]*$/m",
     "replaceString": "$1",
     "trimStrings": [],
-    "placement": [3],
+    "placement": [
+      3
+    ],
     "disabled": false,
     "markdownOnly": false,
     "promptOnly": false,
@@ -17,10 +19,12 @@
   {
     "id": "981b85f4-ecf7-4396-a196-e20d7530e586",
     "scriptName": "D20_提取DC",
-    "findRegex": "[\\s\\S]*?DC=([+-]?\\d+)[\\s\\S]*",
+    "findRegex": "/^[\\s\\S]*\\[D20_REQUEST\\][ \\t]*\\r?\\n(?:(?!\\[/?D20_REQUEST\\])[\\s\\S])*?^[ \\t]*DC[ \\t]*=[ \\t]*([+-]?\\d+)[ \\t]*(?=\\r?$)(?:(?!\\[/?D20_REQUEST\\])[\\s\\S])*?\\[/D20_REQUEST\\][\\s\\S]*$/m",
     "replaceString": "$1",
     "trimStrings": [],
-    "placement": [3],
+    "placement": [
+      3
+    ],
     "disabled": false,
     "markdownOnly": false,
     "promptOnly": false,
@@ -32,10 +36,12 @@
   {
     "id": "722f0f02-4dd2-42d4-9022-3d1040bd18ef",
     "scriptName": "D20_提取MOD",
-    "findRegex": "[\\s\\S]*?MOD\\s*=\\s*([+-]?\\d+)[\\s\\S]*",
+    "findRegex": "/^[\\s\\S]*\\[D20_REQUEST\\][ \\t]*\\r?\\n(?:(?!\\[/?D20_REQUEST\\])[\\s\\S])*?^[ \\t]*MOD[ \\t]*=[ \\t]*([+-]?\\d+)[ \\t]*(?=\\r?$)(?:(?!\\[/?D20_REQUEST\\])[\\s\\S])*?\\[/D20_REQUEST\\][\\s\\S]*$/m",
     "replaceString": "$1",
     "trimStrings": [],
-    "placement": [3],
+    "placement": [
+      3
+    ],
     "disabled": false,
     "markdownOnly": false,
     "promptOnly": false,
@@ -47,10 +53,12 @@
   {
     "id": "70ef8570-7da7-433d-a4a1-fca0a2b7e1da",
     "scriptName": "D20_提取DETAIL",
-    "findRegex": "[\\s\\S]*?DETAIL\\s*=\\s*([^\\r\\n]+)[\\s\\S]*",
+    "findRegex": "/^[\\s\\S]*\\[D20_REQUEST\\][ \\t]*\\r?\\n(?:(?!\\[/?D20_REQUEST\\])[\\s\\S])*?^[ \\t]*DETAIL[ \\t]*=[ \\t]*([^\\r\\n]+(?:\\r?\\n(?![ \\t]*(?:\\[/?D20_REQUEST\\]|(?:ACTION|DC|MOD|DETAIL)[ \\t]*=))[^\\r\\n]+)*)(?:(?!\\[/?D20_REQUEST\\])[\\s\\S])*?\\[/D20_REQUEST\\][\\s\\S]*$/m",
     "replaceString": "$1",
     "trimStrings": [],
-    "placement": [3],
+    "placement": [
+      3
+    ],
     "disabled": false,
     "markdownOnly": false,
     "promptOnly": false,

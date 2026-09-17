@@ -1,48 +1,12 @@
 import { init as baseInit } from './index.js';
+import { stripPendingInteractionBlocks } from './pending-output.js';
 
 const EXTENSION_KEY = 'xiuxianD20Installer';
-const BASE_VERSION = '1.0.3';
-const WRAPPER_VERSION = '1.1.4';
-const OUTPUT_GUARD_SENTINEL = '__xiuxianD20PendingOutputGuardV113';
-const VERSION_GUARD_SENTINEL = '__xiuxianD20VersionGuardV114';
+const OUTPUT_GUARD_SENTINEL = '__xiuxianD20PendingOutputGuardV115';
 
 function getContext() {
     if (!globalThis.SillyTavern?.getContext) throw new Error('SillyTavern.getContext() 不可用。');
     return globalThis.SillyTavern.getContext();
-}
-
-/**
- * D20 请求出现时，本轮输出必须停在判定点。
- * 这里只清理“预设额外生成的交互 UI”，绝不读取、修改或保存用户预设本体。
- */
-function stripPendingInteractionBlocks(text) {
-    if (typeof text !== 'string' || !text.includes('[D20_REQUEST]')) return text;
-
-    let cleaned = text;
-
-    // 常见的三选一/行动选项块。
-    cleaned = cleaned.replace(/<options\b[^>]*>[\s\S]*?<\/options\s*>/gi, '');
-
-    // 小猫之神 Reborn 等预设使用的留言折叠块。
-    cleaned = cleaned.replace(
-        /<details\b[^>]*>\s*<summary\b[^>]*>\s*小猫之神的留言\s*<\/summary\s*>[\s\S]*?<\/details\s*>/gi,
-        '',
-    );
-
-    // 容错：summary 中存在额外空格、图标或少量包装文本时仍能识别。
-    cleaned = cleaned.replace(
-        /<details\b[^>]*>[\s\S]*?<summary\b[^>]*>[\s\S]*?小猫之神的留言[\s\S]*?<\/summary\s*>[\s\S]*?<\/details\s*>/gi,
-        '',
-    );
-
-    // 容错：模型偶尔漏掉闭合标签时，从对应交互块起截掉尾部。
-    cleaned = cleaned.replace(/<options\b[^>]*>[\s\S]*$/gi, '');
-    cleaned = cleaned.replace(
-        /<details\b[^>]*>[\s\S]*?<summary\b[^>]*>[\s\S]*?小猫之神的留言[\s\S]*$/gi,
-        '',
-    );
-
-    return cleaned.replace(/\n{3,}/g, '\n\n').trimEnd();
 }
 
 async function sanitizeMessageById(messageId, { rerender = false } = {}) {
@@ -58,6 +22,10 @@ async function sanitizeMessageById(messageId, { rerender = false } = {}) {
     if (cleaned === original) return false;
 
     message.mes = cleaned;
+    if (Array.isArray(message.swipes) && Number.isInteger(message.swipe_id)
+        && message.swipes[message.swipe_id] === original) {
+        message.swipes[message.swipe_id] = cleaned;
+    }
     message.extra ??= {};
     message.extra.xiuxianD20PendingOutputGuard = true;
 
@@ -114,65 +82,16 @@ function installPendingOutputGuard() {
     globalThis[OUTPUT_GUARD_SENTINEL] = true;
 }
 
-function syncWrapperVersion() {
-    const context = getContext();
-    context.extensionSettings[EXTENSION_KEY] ??= {};
-    const state = context.extensionSettings[EXTENSION_KEY];
-
-    if (state.installedVersion !== WRAPPER_VERSION) {
-        state.installedVersion = WRAPPER_VERSION;
-        context.saveSettingsDebounced?.();
-    }
-
-    const node = document.querySelector('#xiuxian-d20-installer-status');
-    if (node && typeof node.textContent === 'string') {
-        const oldLabel = `版本 ${BASE_VERSION}`;
-        const newLabel = `版本 ${WRAPPER_VERSION}`;
-        if (node.textContent.includes(oldLabel)) {
-            node.textContent = node.textContent.replace(oldLabel, newLabel);
-        }
-    }
-}
-
-function installVersionGuard() {
-    if (globalThis[VERSION_GUARD_SENTINEL]) return;
-
-    const node = document.querySelector('#xiuxian-d20-installer-status');
-    let observer = null;
-
-    if (node) {
-        observer = new MutationObserver(() => {
-            queueMicrotask(() => syncWrapperVersion());
-        });
-        observer.observe(node, { childList: true, characterData: true, subtree: true });
-    }
-
-    // 核心 1.0.3 安装器在“重新安装/修复”完成时会把 installedVersion 回写成 1.0.3。
-    // 这里仅纠正本扩展自己的版本状态，不修改任何用户预设、Regex 或 QR 内容。
-    for (const id of ['#xiuxian-d20-installer-repair', '#xiuxian-d20-installer-check']) {
-        document.querySelector(id)?.addEventListener('click', () => {
-            setTimeout(() => syncWrapperVersion(), 0);
-        });
-    }
-
-    globalThis[VERSION_GUARD_SENTINEL] = { observer };
-    syncWrapperVersion();
-}
-
 export async function init() {
     const context = getContext();
     context.extensionSettings[EXTENSION_KEY] ??= {};
 
-    // 兼容 1.0.3 核心安装器：先临时对齐其内部版本，避免每次刷新都强制重装。
-    context.extensionSettings[EXTENSION_KEY].installedVersion = BASE_VERSION;
-    context.saveSettingsDebounced?.();
-
+    // Preserve the installed version until baseInit has migrated managed assets.
     await baseInit();
 
     // v1.1.1 起不再复制、重命名、生成或修改任何第三方预设。
     // 固定只使用扩展内置的两套 D20 规则，并通过 Extension Prompt 运行时注入。
     const state = context.extensionSettings[EXTENSION_KEY];
-    state.installedVersion = WRAPPER_VERSION;
     state.promptMode = 'd20-only-runtime-injection';
     state.presetMutation = false;
     state.pendingOutputGuard = true;
@@ -185,11 +104,9 @@ export async function init() {
     delete state.presetAutoError;
 
     installPendingOutputGuard();
-    installVersionGuard();
 
     // 更新/刷新扩展后，顺手清理当前最后一条尚未处理的 D20 请求消息。
     await sanitizeLatestAssistantMessage({ rerender: true });
 
-    syncWrapperVersion();
     context.saveSettingsDebounced?.();
 }
