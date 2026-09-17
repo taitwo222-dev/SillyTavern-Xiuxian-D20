@@ -6,7 +6,7 @@
   "js": "index-v1.1.js",
   "css": "style.css",
   "author": "taitwo222-dev",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "homePage": "https://github.com/taitwo222-dev/SillyTavern-Xiuxian-D20",
   "dependencies": [
     "regex",
