@@ -1,5 +1,10 @@
 import { init as baseInit } from './index.js';
 import { stripPendingInteractionBlocks } from './pending-output.js';
+import {
+    installTiandaoAwardRuntime,
+    processLatestTiandaoAwards,
+    registerTiandaoCommands,
+} from './tiandao-runtime.js';
 
 const EXTENSION_KEY = 'xiuxianD20Installer';
 const OUTPUT_GUARD_SENTINEL = '__xiuxianD20PendingOutputGuardV115';
@@ -7,6 +12,12 @@ const OUTPUT_GUARD_SENTINEL = '__xiuxianD20PendingOutputGuardV115';
 function getContext() {
     if (!globalThis.SillyTavern?.getContext) throw new Error('SillyTavern.getContext() 不可用。');
     return globalThis.SillyTavern.getContext();
+}
+
+function notify(type, message, title = '修仙 D20') {
+    const toast = globalThis.toastr?.[type];
+    if (typeof toast === 'function') toast(message, title);
+    else console[type === 'error' ? 'error' : 'log'](`[${title}] ${message}`);
 }
 
 async function sanitizeMessageById(messageId, { rerender = false } = {}) {
@@ -86,6 +97,9 @@ export async function init() {
     const context = getContext();
     context.extensionSettings[EXTENSION_KEY] ??= {};
 
+    // 天道点命令必须在 Quick Reply 初始化按钮被使用前可用。
+    registerTiandaoCommands(getContext, notify);
+
     // Preserve the installed version until baseInit has migrated managed assets.
     await baseInit();
 
@@ -95,6 +109,7 @@ export async function init() {
     state.promptMode = 'd20-only-runtime-injection';
     state.presetMutation = false;
     state.pendingOutputGuard = true;
+    state.tiandaoAutoAwards = true;
 
     // 清除旧版“复制当前预设 + 修仙D20”模式留下的扩展状态记录。
     delete state.presetMode;
@@ -104,9 +119,12 @@ export async function init() {
     delete state.presetAutoError;
 
     installPendingOutputGuard();
+    installTiandaoAwardRuntime(getContext, notify);
 
-    // 更新/刷新扩展后，顺手清理当前最后一条尚未处理的 D20 请求消息。
+    // 更新/刷新扩展后，顺手清理当前最后一条尚未处理的 D20 请求消息，
+    // 并处理其中尚未入账的天道奖励标记。
     await sanitizeLatestAssistantMessage({ rerender: true });
+    await processLatestTiandaoAwards(getContext, { rerender: true, notify });
 
     context.saveSettingsDebounced?.();
 }
