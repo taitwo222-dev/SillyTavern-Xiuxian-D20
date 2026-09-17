@@ -1,5 +1,5 @@
 const EXTENSION_KEY = 'xiuxianD20Installer';
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 const SET_NAME = '修仙D20';
 const MANAGED_REGEX_NAMES = [
     'D20_提取ACTION',
@@ -7,6 +7,8 @@ const MANAGED_REGEX_NAMES = [
     'D20_提取MOD',
     'D20_提取DETAIL',
 ];
+const CORE_PROMPT_KEY = 'xiuxian_d20_core_rules';
+const GUARD_PROMPT_KEY = 'xiuxian_d20_guard_rules';
 
 let cachedPayload = null;
 let installRunning = false;
@@ -30,17 +32,21 @@ function getContext() {
 async function loadPayload() {
     if (cachedPayload) return cachedPayload;
 
-    const [regexResponse, quickReplyResponse] = await Promise.all([
+    const [regexResponse, quickReplyResponse, corePromptResponse, guardPromptResponse] = await Promise.all([
         fetch(new URL('./assets/regexes.json', import.meta.url), { cache: 'no-store' }),
         fetch(new URL('./assets/quickreply.json', import.meta.url), { cache: 'no-store' }),
+        fetch(new URL('./assets/prompts/d20-core.txt', import.meta.url), { cache: 'no-store' }),
+        fetch(new URL('./assets/prompts/d20-guard.txt', import.meta.url), { cache: 'no-store' }),
     ]);
 
-    if (!regexResponse.ok || !quickReplyResponse.ok) {
-        throw new Error('无法读取扩展内置的 D20 配置文件。');
+    if (!regexResponse.ok || !quickReplyResponse.ok || !corePromptResponse.ok || !guardPromptResponse.ok) {
+        throw new Error('无法读取扩展内置的 D20 配置或裁判规则。');
     }
 
     const regexes = await regexResponse.json();
     const quickReply = await quickReplyResponse.json();
+    const corePrompt = await corePromptResponse.text();
+    const guardPrompt = await guardPromptResponse.text();
 
     if (!Array.isArray(regexes) || regexes.length !== 4) {
         throw new Error('Regex 配置数量异常。');
@@ -48,8 +54,11 @@ async function loadPayload() {
     if (!quickReply || quickReply.version !== 2 || !Array.isArray(quickReply.qrList)) {
         throw new Error('Quick Reply 配置格式异常。');
     }
+    if (!corePrompt.trim() || !guardPrompt.trim()) {
+        throw new Error('D20 裁判提示词为空。');
+    }
 
-    cachedPayload = { regexes, quickReply };
+    cachedPayload = { regexes, quickReply, corePrompt, guardPrompt };
     return cachedPayload;
 }
 
@@ -57,6 +66,34 @@ function clone(value) {
     return typeof structuredClone === 'function'
         ? structuredClone(value)
         : JSON.parse(JSON.stringify(value));
+}
+
+async function applyPromptRules(payload = null) {
+    const data = payload ?? await loadPayload();
+    const context = getContext();
+    if (typeof context.setExtensionPrompt !== 'function') {
+        throw new Error('setExtensionPrompt() 不可用，无法注入 D20 裁判规则。');
+    }
+
+    const { extension_prompt_types, extension_prompt_roles } = await import('/script.js');
+
+    context.setExtensionPrompt(
+        CORE_PROMPT_KEY,
+        data.corePrompt,
+        extension_prompt_types.IN_PROMPT,
+        0,
+        false,
+        extension_prompt_roles.SYSTEM,
+    );
+
+    context.setExtensionPrompt(
+        GUARD_PROMPT_KEY,
+        data.guardPrompt,
+        extension_prompt_types.IN_CHAT,
+        0,
+        false,
+        extension_prompt_roles.SYSTEM,
+    );
 }
 
 function syncRegexes(regexes, forceUpdate) {
@@ -210,7 +247,8 @@ function getDependencyWarnings() {
 }
 
 async function inspectStatus() {
-    const { extensionSettings } = getContext();
+    const context = getContext();
+    const { extensionSettings } = context;
     const regexList = Array.isArray(extensionSettings.regex) ? extensionSettings.regex : [];
     const regexFound = MANAGED_REGEX_NAMES.filter(name => regexList.some(rule => rule?.scriptName === name)).length;
 
@@ -231,6 +269,10 @@ async function inspectStatus() {
         quickRepliesEnabled = typeof api.settings?.isEnabled === 'boolean' ? api.settings.isEnabled : null;
     }
 
+    const promptMap = context.extensionPrompts ?? {};
+    const promptFound = [CORE_PROMPT_KEY, GUARD_PROMPT_KEY]
+        .filter(key => Boolean(promptMap[key]?.value)).length;
+
     const warnings = getDependencyWarnings();
     return {
         regexFound,
@@ -239,6 +281,8 @@ async function inspectStatus() {
         qrTotal,
         isGlobal,
         quickRepliesEnabled,
+        promptFound,
+        promptTotal: 2,
         warnings,
         version: extensionSettings[EXTENSION_KEY]?.installedVersion ?? '未记录',
     };
@@ -247,7 +291,7 @@ async function inspectStatus() {
 function formatStatus(status) {
     const qrEnabled = status.quickRepliesEnabled === null ? '未知' : (status.quickRepliesEnabled ? '已开启' : '未开启');
     const warning = status.warnings.length ? `；警告：${status.warnings.join('、')}` : '';
-    return `版本 ${status.version}｜Regex ${status.regexFound}/${status.regexTotal}｜QR ${status.qrFound}/${status.qrTotal}｜全局挂载 ${status.isGlobal ? '是' : '否'}｜Quick Replies ${qrEnabled}${warning}`;
+    return `版本 ${status.version}｜Regex ${status.regexFound}/${status.regexTotal}｜QR ${status.qrFound}/${status.qrTotal}｜裁判规则 ${status.promptFound}/${status.promptTotal}｜全局挂载 ${status.isGlobal ? '是' : '否'}｜Quick Replies ${qrEnabled}${warning}`;
 }
 
 async function refreshPanelStatus() {
@@ -274,11 +318,13 @@ async function runInstall({ force = false, silent = false } = {}) {
 
         const regexResult = syncRegexes(payload.regexes, shouldForce);
         const qrResult = await syncQuickReplies(payload.quickReply, shouldForce, shouldForce);
+        await applyPromptRules(payload);
 
         state.installedVersion = VERSION;
         state.lastSync = new Date().toISOString();
         state.qrSetName = SET_NAME;
         state.managedRegexNames = [...MANAGED_REGEX_NAMES];
+        state.promptInjection = true;
         delete state.lastError;
         saveSettingsDebounced();
 
@@ -287,6 +333,7 @@ async function runInstall({ force = false, silent = false } = {}) {
             const details = [
                 `Regex：新增 ${regexResult.added}，更新 ${regexResult.updated}`,
                 `QR：新增 ${qrResult.added}，更新 ${qrResult.updated}`,
+                'D20裁判规则：已自动注入',
             ];
             if (warnings.length) details.push(`注意：${warnings.join('、')}`);
             notify(warnings.length ? 'warning' : 'success', details.join('；'));
@@ -326,15 +373,16 @@ function createSettingsPanel() {
                     <button id="xiuxian-d20-installer-repair" class="menu_button">重新安装 / 修复 D20 配置</button>
                     <button id="xiuxian-d20-installer-check" class="menu_button">检查状态</button>
                 </div>
-                <small>只管理 D20_提取ACTION / DC / MOD / DETAIL 与“修仙D20”中的 7 个内置快捷回复；不会删除其他自定义配置。</small>
+                <small>自动管理 4 个 D20 Regex、7 个快捷回复，以及核心裁判规则与每轮前置检查；不会删除其他自定义配置。</small>
             </div>
         </div>`;
     host.append(wrapper);
 
     wrapper.querySelector('#xiuxian-d20-installer-repair')?.addEventListener('click', () => runInstall({ force: true }));
     wrapper.querySelector('#xiuxian-d20-installer-check')?.addEventListener('click', async () => {
+        await applyPromptRules();
         await refreshPanelStatus();
-        notify('info', 'D20 配置状态已刷新。');
+        notify('info', 'D20 配置与裁判规则状态已刷新。');
     });
 
     refreshPanelStatus();
@@ -348,6 +396,10 @@ export async function init() {
         const { extensionSettings } = getContext();
         const state = extensionSettings[EXTENSION_KEY] ?? {};
         const payload = await loadPayload();
+
+        // 每次酒馆刷新都重新挂载裁判提示词，确保更换小猫预设后仍然有效。
+        await applyPromptRules(payload);
+
         const regexList = Array.isArray(extensionSettings.regex) ? extensionSettings.regex : [];
         const missingRegex = payload.regexes.some(rule => !regexList.some(existing => existing?.scriptName === rule.scriptName));
 
@@ -359,7 +411,6 @@ export async function init() {
         if (needsInstall) {
             await runInstall({ force: state.installedVersion !== VERSION, silent: false });
         } else {
-            // 已完整安装时尊重用户后续的启用/禁用和内容修改，只刷新状态，不主动改写配置。
             await refreshPanelStatus();
         }
     } catch (error) {
