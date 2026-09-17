@@ -3,10 +3,10 @@
   "loading_order": 200,
   "requires": [],
   "optional": [],
-  "js": "index.js",
+  "js": "index-v1.1.js",
   "css": "style.css",
   "author": "taitwo222-dev",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "homePage": "https://github.com/taitwo222-dev/SillyTavern-Xiuxian-D20",
   "dependencies": [
     "regex",
