@@ -1,0 +1,12 @@
+#xiuxian-d20-installer-panel .inline-drawer-content {
+    padding-bottom: 0.75rem;
+}
+
+#xiuxian-d20-installer-status {
+    overflow-wrap: anywhere;
+}
+
+#xiuxian-d20-installer-panel .flexWrap {
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+}
