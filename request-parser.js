@@ -79,6 +79,9 @@ export function parseD20Request(text) {
             if (!fields[field]?.trim()) fail('missing_field', `${field} 缺失或为空；未锁定完整条件，不能投骰。`);
         }
         const dc = integer(fields.DC, 'DC');
+        if (dc < 5 || dc > 30) {
+            fail('dc_out_of_range', `DC=${dc} 超出合法范围 5—30。若客观难度需要高于30，则当前条件下不应投骰，应直接判定无法完成或先改变条件后重新评估。`);
+        }
         const mod = integer(fields.MOD, 'MOD');
         const breakdown = parseDetail(fields.DETAIL);
         if (breakdown.sum !== mod) fail('sum_mismatch', `DETAIL 合计为 ${breakdown.sum}，但 MOD 为 ${mod}；请在投骰前核对。`);
