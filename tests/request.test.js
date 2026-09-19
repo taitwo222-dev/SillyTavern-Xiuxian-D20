@@ -39,6 +39,16 @@ test('the all-zero screenshot-style breakdown requires review before dice, never
     assert.equal(parsed.code, 'unexplained_zero');
 });
 
+test('enforce D20 DC scale: 5-30 only and reject inflated DC such as 75', () => {
+    const dc30 = parseD20Request(request().replace('DC=12', 'DC=30'));
+    assert.equal(dc30.ok, true);
+    for (const badDc of ['4', '31', '75', '100']) {
+        const parsed = parseD20Request(request().replace('DC=12', `DC=${badDc}`));
+        assert.equal(parsed.ok, false);
+        assert.equal(parsed.code, 'dc_out_of_range');
+    }
+});
+
 test('reject mismatch, empty ACTION, missing MOD, junk numbers, unsigned nonzero and duplicate sources', () => {
     const cases = [
         [request('0'), 'sum_mismatch'],
